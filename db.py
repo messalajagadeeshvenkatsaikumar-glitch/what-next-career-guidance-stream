@@ -67,7 +67,17 @@ def mysql_config(include_database=True):
     ssl_ca = os.environ.get('MYSQL_SSL_CA')
     verify_cert = ssl_mode in {'VERIFY_CA', 'VERIFY_IDENTITY'}
     if ssl_ca and verify_cert:
-        config['ssl_ca'] = str((BASE_DIR / ssl_ca).resolve()) if not os.path.isabs(ssl_ca) else ssl_ca
+        ca_path = Path(ssl_ca)
+        if not ca_path.is_absolute():
+            ca_path = BASE_DIR / ca_path
+        ca_path = ca_path.resolve()
+        if not ca_path.is_file():
+            raise ValueError(
+                f'MYSQL_SSL_CA file not found: {ca_path}. Set MYSQL_SSL_CA to an '
+                'existing CA certificate file, or use MYSQL_SSL_MODE=REQUIRED '
+                'and unset MYSQL_SSL_CA.'
+            )
+        config['ssl_ca'] = str(ca_path)
     config['ssl_verify_cert'] = verify_cert
     config['ssl_verify_identity'] = ssl_mode == 'VERIFY_IDENTITY'
     if include_database:

@@ -40,14 +40,16 @@ class FakeConnection:
         self.closed = True
 
 
-def test_mysql_config_reads_managed_database_environment(monkeypatch):
+def test_mysql_config_reads_managed_database_environment(monkeypatch, tmp_path):
+    ca_file = tmp_path / 'ca.pem'
+    ca_file.write_text('test certificate', encoding='utf-8')
     monkeypatch.setenv('MYSQL_HOST', 'managed-db.example')
     monkeypatch.setenv('MYSQL_PORT', '27920')
     monkeypatch.setenv('MYSQL_USER', 'avnadmin')
     monkeypatch.setenv('MYSQL_PASSWORD', 'test-password')
     monkeypatch.setenv('MYSQL_DATABASE', 'defaultdb')
     monkeypatch.setenv('MYSQL_SSL_MODE', 'VERIFY_CA')
-    monkeypatch.setenv('MYSQL_SSL_CA', 'certs/ca.pem')
+    monkeypatch.setenv('MYSQL_SSL_CA', str(ca_file))
 
     config = db.mysql_config()
 
@@ -56,7 +58,28 @@ def test_mysql_config_reads_managed_database_environment(monkeypatch):
     assert config['database'] == 'defaultdb'
     assert config['ssl_disabled'] is False
     assert config['ssl_verify_cert'] is True
-    assert config['ssl_ca'] == str((Path(db.BASE_DIR) / 'certs/ca.pem').resolve())
+    assert config['ssl_ca'] == str(ca_file.resolve())
+
+
+def test_mysql_config_reports_missing_ca_file(monkeypatch):
+    for name, value in {
+        'MYSQL_HOST': 'managed-db.example',
+        'MYSQL_PORT': '27920',
+        'MYSQL_USER': 'avnadmin',
+        'MYSQL_PASSWORD': 'test-password',
+        'MYSQL_DATABASE': 'defaultdb',
+        'MYSQL_SSL_MODE': 'VERIFY_CA',
+        'MYSQL_SSL_CA': 'certs/missing-ca.pem',
+    }.items():
+        monkeypatch.setenv(name, value)
+
+    try:
+        db.mysql_config()
+    except ValueError as error:
+        assert 'MYSQL_SSL_CA file not found' in str(error)
+        assert 'MYSQL_SSL_MODE=REQUIRED' in str(error)
+    else:
+        raise AssertionError('A missing CA certificate must be reported clearly.')
 
 
 def test_required_ssl_does_not_load_optional_ca_file(monkeypatch):

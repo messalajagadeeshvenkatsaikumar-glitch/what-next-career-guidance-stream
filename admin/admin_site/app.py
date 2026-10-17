@@ -24,16 +24,18 @@ app.config['ADMIN_PASSWORD_HASH'] = generate_password_hash(app.config['ADMIN_PAS
 
 
 def mysql_config(include_database=True):
+    ssl_mode = app.config['MYSQL_SSL_MODE'].upper()
+    verify_cert = ssl_mode in {'VERIFY_CA', 'VERIFY_IDENTITY'}
     config = {
         'host': app.config['MYSQL_HOST'],
         'port': app.config['MYSQL_PORT'],
         'user': app.config['MYSQL_USER'],
         'password': app.config['MYSQL_PASSWORD'],
         'ssl_disabled': False,
-        'ssl_verify_cert': app.config['MYSQL_SSL_MODE'] in {'VERIFY_CA', 'VERIFY_IDENTITY'},
-        'ssl_verify_identity': app.config['MYSQL_SSL_MODE'] == 'VERIFY_IDENTITY',
+        'ssl_verify_cert': verify_cert,
+        'ssl_verify_identity': ssl_mode == 'VERIFY_IDENTITY',
     }
-    if app.config.get('MYSQL_SSL_CA'):
+    if verify_cert and app.config.get('MYSQL_SSL_CA'):
         config['ssl_ca'] = app.config['MYSQL_SSL_CA']
     if include_database:
         config['database'] = app.config['MYSQL_DATABASE']

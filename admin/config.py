@@ -11,14 +11,20 @@ def resolve_ssl_ca(value):
 
     ca_path = Path(value)
     if ca_path.is_absolute():
-        return str(ca_path)
+        resolved_path = ca_path.resolve()
+        if resolved_path.is_file():
+            return str(resolved_path)
+        raise ValueError(f'MYSQL_SSL_CA file not found: {resolved_path}')
 
     for base_dir in (Path.cwd(), PROJECT_ROOT, BASE_DIR, PROJECT_ROOT.parent):
-        candidate = base_dir / ca_path
+        candidate = (base_dir / ca_path).resolve()
         if candidate.is_file():
             return str(candidate)
 
-    return str(ca_path)
+    raise ValueError(
+        f'MYSQL_SSL_CA file not found: {value!r}. Set it to an existing CA '
+        'certificate file, or use MYSQL_SSL_MODE=REQUIRED and unset MYSQL_SSL_CA.'
+    )
 
 
 def get_required_env(name):
@@ -44,8 +50,12 @@ class Config:
     MYSQL_PASSWORD = get_required_env('MYSQL_PASSWORD')
     MYSQL_DATABASE = get_required_env('MYSQL_DATABASE')
 
-    MYSQL_SSL_MODE = get_required_env('MYSQL_SSL_MODE')
-    MYSQL_SSL_CA = resolve_ssl_ca(os.environ.get('MYSQL_SSL_CA'))
+    MYSQL_SSL_MODE = get_required_env('MYSQL_SSL_MODE').upper()
+    MYSQL_SSL_CA = (
+        resolve_ssl_ca(os.environ.get('MYSQL_SSL_CA'))
+        if MYSQL_SSL_MODE in {'VERIFY_CA', 'VERIFY_IDENTITY'}
+        else None
+    )
     DB_AUTO_INIT = os.environ.get('DB_AUTO_INIT', 'False').lower() in {'1', 'true', 'yes', 'on'}
     PORT = int(os.environ.get('ADMIN_PORT', '5002'))
 
