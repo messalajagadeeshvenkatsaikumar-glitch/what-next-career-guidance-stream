@@ -24,5 +24,6 @@ class Config:
     MYSQL_DATABASE = get_required_env('MYSQL_DATABASE')
     MYSQL_SSL_MODE = get_required_env('MYSQL_SSL_MODE')
     MYSQL_SSL_CA = os.environ.get('MYSQL_SSL_CA')
+    DB_AUTO_INIT = os.environ.get('DB_AUTO_INIT', 'False').lower() in {'1', 'true', 'yes', 'on'}
     ADMIN_USERNAME = get_required_env('ADMIN_USERNAME')
     ADMIN_PASSWORD = get_required_env('ADMIN_PASSWORD')

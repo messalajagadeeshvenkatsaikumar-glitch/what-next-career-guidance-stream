@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import sys
 from functools import wraps
 from pathlib import Path
@@ -13,18 +14,28 @@ from dotenv import load_dotenv
 from flask import (Flask, render_template, request, redirect, url_for,
                     session, flash, g, send_file, jsonify)
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash, check_password_hash
 from mysql.connector import Error
 
-from db import connect_db, is_connected
-from question_management import question_management_bp
-from question_management.services import ensure_seed_data, get_published_questions, score_and_record
+from db import DatabaseSchemaError, connect_db, verify_schema
+from routes import question_management_bp
+from services import ensure_seed_data, get_published_questions, score_and_record
 
 load_dotenv(BASE_DIR / ".env")
 
 from config import Config
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+
+
+def safe_error_message(error):
+    message = str(error)
+    password = os.environ.get('MYSQL_PASSWORD')
+    if password:
+        message = message.replace(password, '<redacted>')
+    return re.sub(r'(password\s*[=:]\s*)[^\s,;]+', r'\1<redacted>', message, flags=re.IGNORECASE)
+
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -54,7 +65,7 @@ app.extensions["main_db"] = lambda: get_db()
 @app.errorhandler(Exception)
 def handle_exception(error):
     app.logger.exception('Unhandled application error: %s', error)
-    if hasattr(error, 'code') and error.code in {404, 405}:
+    if isinstance(error, HTTPException):
         return error
     return "An internal server error occurred.", 500
 
@@ -78,16 +89,41 @@ def close_db(exception=None):
 
 
 def init_db():
-    with app.app_context():
-        db = get_db()
-        schema_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "database.sql"))
-        with open(schema_path, "r", encoding="utf-8") as f:
-            for statement in f.read().split(";"):
-                statement = statement.strip()
-                if statement:
-                    db.execute(statement)
-        db.commit()
-        ensure_seed_data(db, CAREER_DATA)
+    if app.config.get("DB_INITIALIZED"):
+        return True
+    if not app.config.get("DB_AUTO_INIT"):
+        try:
+            with app.app_context():
+                db = get_db()
+                db.execute("SELECT 1").fetchone()
+                verify_schema(db)
+            app.config["DB_INITIALIZED"] = True
+            app.config["DB_ERROR"] = None
+            return True
+        except Exception as error:
+            app.config["DB_ERROR"] = safe_error_message(error)
+            app.logger.exception("Database connectivity check failed.")
+            app.config["DB_INITIALIZED"] = False
+            return False
+    try:
+        with app.app_context():
+            db = get_db()
+            schema_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "database.sql"))
+            with open(schema_path, "r", encoding="utf-8") as f:
+                for statement in f.read().split(";"):
+                    statement = statement.strip()
+                    if statement:
+                        db.execute(statement)
+            db.commit()
+            ensure_seed_data(db, CAREER_DATA)
+        app.config["DB_INITIALIZED"] = True
+        app.config["DB_ERROR"] = None
+        return True
+    except Exception as error:
+        app.config["DB_ERROR"] = safe_error_message(error)
+        app.logger.exception("Database initialization failed during startup or request handling.")
+        app.config["DB_INITIALIZED"] = False
+        return False
 
 
 @app.before_request
@@ -95,12 +131,18 @@ def ensure_app_database():
     if request.path.startswith('/health') or request.path.startswith('/static'):
         return None
     if not app.config.get("DB_INITIALIZED"):
-        try:
-            init_db()
-            app.config["DB_INITIALIZED"] = True
-        except Exception:
-            app.logger.exception("Database initialization failed during request handling.")
-            return jsonify({"status": "error", "database": "disconnected"}), 503
+        if not init_db():
+            message = app.config.get("DB_ERROR") or "Database connection failed."
+            response_format = request.accept_mimetypes.best_match(
+                ["application/json", "text/html"]
+            )
+            if request.path.startswith('/api/') or response_format == "application/json":
+                return jsonify({
+                    "status": "error",
+                    "database": "disconnected",
+                    "message": message,
+                }), 503
+            return render_template("database_error.html", error_message=message), 503
 
 
 def get_admin_db():
@@ -108,16 +150,21 @@ def get_admin_db():
 
 
 def init_admin_db():
-    with app.app_context():
-        db = get_db()
-        db.execute("""CREATE TABLE IF NOT EXISTS admins (
-            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            username VARCHAR(100) NOT NULL UNIQUE,
-            password_hash VARCHAR(255) NOT NULL,
-            full_name VARCHAR(150),
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB""")
-        db.commit()
+    try:
+        with app.app_context():
+            db = get_db()
+            db.execute("""CREATE TABLE IF NOT EXISTS admins (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(100) NOT NULL UNIQUE,
+                password_hash VARCHAR(255) NOT NULL,
+                full_name VARCHAR(150),
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB""")
+            db.commit()
+        return True
+    except Exception:
+        app.logger.exception("Admin database initialization failed.")
+        return False
 
 # ---------------------------------------------------------------------------
 # Career data: categories, courses, colleges, jobs, roadmap
@@ -378,17 +425,39 @@ def about():
     return render_template("about.html")
 
 
+@app.route("/flowchart")
+def flowchart():
+    return render_template("flowchart.html")
+
+
 @app.route('/health')
 def health():
+    db = None
     try:
-        connected = is_connected()
-    except (Error, KeyError, OSError, ValueError) as error:
-        app.logger.warning('Health check failed: %s', safe_error_message(error))
-        connected = False
-    if connected:
-        return jsonify({"status": "ok", "database": "connected"}), 200
-    app.logger.warning('Health check failed: MySQL database not reachable.')
-    return jsonify({"status": "error", "database": "disconnected"}), 503
+        if not init_db():
+            message = app.config.get("DB_ERROR") or "Database initialization failed."
+            return jsonify({
+                "status": "error",
+                "database": "disconnected",
+                "message": message,
+            }), 503
+        db = connect_db()
+        db.execute('SELECT 1').fetchone()
+        verify_schema(db)
+    except (DatabaseSchemaError, Error, KeyError, OSError, ValueError) as error:
+        message = safe_error_message(error)
+        app.config["DB_ERROR"] = message
+        app.logger.warning('Health check failed: %s', message)
+        return jsonify({
+            "status": "error",
+            "database": "disconnected",
+            "message": message,
+        }), 503
+    finally:
+        if db is not None:
+            db.close()
+    app.config["DB_ERROR"] = None
+    return jsonify({"status": "ok", "database": "connected"}), 200
 
 
 @app.route("/contact", methods=["GET", "POST"])
@@ -686,6 +755,8 @@ def admin_delete_message(message_id):
 @app.route("/admin/setup", methods=["GET"])
 def admin_setup():
     """Initialize admin DB and insert default admin if none exist."""
+    if not app.config.get("DB_AUTO_INIT"):
+        return "Admin setup is disabled. Verify the existing database before enabling DB_AUTO_INIT.", 403
     init_admin_db()
     admin_db = get_admin_db()
     existing = admin_db.execute("SELECT COUNT(1) AS cnt FROM admins").fetchone()["cnt"]
@@ -913,15 +984,19 @@ def feedback():
 
 
 if __name__ == "__main__":
-    init_db()
-    init_admin_db()
-    with app.app_context():
-        db = get_db()
-        existing = db.execute("SELECT COUNT(1) AS cnt FROM admins").fetchone()["cnt"]
-        if existing == 0:
-            db.execute(
-                "INSERT INTO admins (username, password_hash, full_name) VALUES (%s, %s, %s)",
-                (Config.ADMIN_USERNAME, generate_password_hash(Config.ADMIN_PASSWORD), "Administrator"),
-            )
-            db.commit()
+    if app.config.get("DB_AUTO_INIT") and init_db() and init_admin_db():
+        try:
+            with app.app_context():
+                db = get_db()
+                existing = db.execute("SELECT COUNT(1) AS cnt FROM admins").fetchone()["cnt"]
+                if existing == 0:
+                    db.execute(
+                        "INSERT INTO admins (username, password_hash, full_name) VALUES (%s, %s, %s)",
+                        (Config.ADMIN_USERNAME, generate_password_hash(Config.ADMIN_PASSWORD), "Administrator"),
+                    )
+                    db.commit()
+        except Exception:
+            app.logger.exception("Failed to initialize the admin user record.")
+    else:
+        app.logger.warning("Skipping admin bootstrap because the database is unreachable.")
     app.run(debug=Config.DEBUG, host="0.0.0.0", port=int(os.environ.get("PORT", "5000")))

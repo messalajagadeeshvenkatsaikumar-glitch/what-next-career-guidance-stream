@@ -65,7 +65,12 @@
                     <ul class="list-items">
                         {% for item in feedback[:10] %}
                             <li>
-                                <span>{{ item.message or item.feedback_text }}</span>
+                                <div>
+                                    <strong>{{ item.name or 'User feedback' }}</strong>
+                                    {% if item.email %}<span>{{ item.email }}</span>{% endif %}
+                                    {% if item.rating %}<span>Rating: {{ item.rating }}/5</span>{% endif %}
+                                    <p>{{ item.message or item.feedback_text }}</p>
+                                </div>
                                 <form method="POST" action="{{ url_for('admin_delete_feedback', feedback_id=item.id) }}" onsubmit="return confirm('Delete this feedback?');">
                                     <button type="submit" class="btn btn-small btn-danger">Delete</button>
                                 </form>
@@ -83,7 +88,12 @@
                     <ul class="list-items">
                         {% for msg in messages[:10] %}
                             <li>
-                                <span>{{ msg.name }} — {{ msg.email }}</span>
+                                <div>
+                                    <strong>{{ msg.name }}</strong>
+                                    <span>{{ msg.email }}</span>
+                                    {% if msg.subject %}<strong>{{ msg.subject }}</strong>{% endif %}
+                                    <p>{{ msg.message }}</p>
+                                </div>
                                 <form method="POST" action="{{ url_for('admin_delete_message', message_id=msg.id) }}" onsubmit="return confirm('Delete this message?');">
                                     <button type="submit" class="btn btn-small btn-danger">Delete</button>
                                 </form>

@@ -1,6 +1,0 @@
-﻿Flask
-gunicorn
-mysql-connector-python
-python-dotenv
-Werkzeug
-Flask-Mail

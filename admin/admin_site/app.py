@@ -311,5 +311,6 @@ def admin_delete_message(message_id):
 
 
 if __name__ == '__main__':
-    ensure_schema()
+    if app.config.get('DB_AUTO_INIT'):
+        ensure_schema()
     app.run(host='127.0.0.1', port=app.config['PORT'], debug=app.config['DEBUG'])

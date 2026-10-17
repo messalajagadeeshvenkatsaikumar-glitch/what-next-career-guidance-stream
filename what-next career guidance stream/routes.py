@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request, current_app, session
-from .services import get_question, create_question, update_question, delete_question
+from services import get_question, create_question, update_question, delete_question
 
 question_management_bp = Blueprint('question_management', __name__, url_prefix='/api/questions')
 

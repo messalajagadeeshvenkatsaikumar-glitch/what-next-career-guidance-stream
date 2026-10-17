@@ -16,7 +16,7 @@ def create_schema():
         password=Config.MYSQL_PASSWORD,
         database=Config.MYSQL_DATABASE,
         ssl_disabled=False,
-        ssl_ca=Config.MYSQL_SSL_CA,
+        **({'ssl_ca': Config.MYSQL_SSL_CA} if Config.MYSQL_SSL_CA else {}),
         ssl_verify_cert=Config.MYSQL_SSL_MODE in {'VERIFY_CA', 'VERIFY_IDENTITY'},
         ssl_verify_identity=Config.MYSQL_SSL_MODE == 'VERIFY_IDENTITY',
     )

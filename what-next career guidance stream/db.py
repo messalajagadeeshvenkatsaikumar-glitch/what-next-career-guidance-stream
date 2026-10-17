@@ -7,6 +7,18 @@ from mysql.connector import Error
 
 BASE_DIR = Path(__file__).resolve().parent
 
+SYSTEM_DATABASES = frozenset({
+    'information_schema', 'mysql', 'performance_schema', 'sys',
+})
+REQUIRED_TABLES = frozenset({
+    'users', 'admins', 'questions', 'question_options', 'user_responses',
+    'career_recommendations', 'quiz_results', 'feedback', 'contact_messages',
+})
+
+
+class DatabaseSchemaError(RuntimeError):
+    """Raised when the configured database is not initialized for this app."""
+
 
 class Database:
     def __init__(self, connection):
@@ -36,6 +48,12 @@ class Database:
 
 
 def mysql_config(include_database=True):
+    database = os.environ['MYSQL_DATABASE'].strip()
+    if database.lower() in SYSTEM_DATABASES:
+        raise ValueError(
+            'MYSQL_DATABASE must be a dedicated application database, not a '
+            'MySQL system schema.'
+        )
     config = {
         'host': os.environ['MYSQL_HOST'],
         'port': int(os.environ['MYSQL_PORT']),
@@ -47,12 +65,13 @@ def mysql_config(include_database=True):
     if ssl_mode not in {'REQUIRED', 'VERIFY_CA', 'VERIFY_IDENTITY'}:
         raise ValueError('MYSQL_SSL_MODE must be REQUIRED, VERIFY_CA, or VERIFY_IDENTITY')
     ssl_ca = os.environ.get('MYSQL_SSL_CA')
-    if ssl_ca:
+    verify_cert = ssl_mode in {'VERIFY_CA', 'VERIFY_IDENTITY'}
+    if ssl_ca and verify_cert:
         config['ssl_ca'] = str((BASE_DIR / ssl_ca).resolve()) if not os.path.isabs(ssl_ca) else ssl_ca
-    config['ssl_verify_cert'] = ssl_mode in {'VERIFY_CA', 'VERIFY_IDENTITY'}
+    config['ssl_verify_cert'] = verify_cert
     config['ssl_verify_identity'] = ssl_mode == 'VERIFY_IDENTITY'
     if include_database:
-        config['database'] = os.environ['MYSQL_DATABASE']
+        config['database'] = database
     return config
 
 
@@ -75,5 +94,27 @@ def is_connected():
         db.execute('SELECT 1').fetchone()
         db.close()
         return True
-    except Error:
+    except (Error, KeyError, OSError, ValueError):
         return False
+
+
+def missing_required_tables(db):
+    """Return project tables absent from the currently selected database."""
+    rows = db.execute(
+        'SELECT table_name FROM information_schema.tables '
+        'WHERE table_schema = DATABASE()'
+    ).fetchall()
+    existing_tables = {str(row['table_name']).lower() for row in rows}
+    return tuple(sorted(REQUIRED_TABLES - existing_tables))
+
+
+def verify_schema(db):
+    """Fail early with an actionable error instead of allowing route-level 500s."""
+    missing_tables = missing_required_tables(db)
+    if missing_tables:
+        raise DatabaseSchemaError(
+            'The configured MySQL database is missing application tables: '
+            + ', '.join(missing_tables)
+            + '. Set MYSQL_DATABASE to the application database and initialize '
+              'it with database.sql, or enable DB_AUTO_INIT only for a new empty database.'
+        )

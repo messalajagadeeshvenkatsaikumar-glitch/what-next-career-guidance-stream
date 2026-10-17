@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}How It Works — What Next?{% endblock %}
+{% block content %}
+<section class="page-header flowchart-header">
+    <div class="container">
+        <p class="eyebrow">Product flow</p>
+        <h1>From first question to next step</h1>
+        <p>See how the browser, Flask backend, and MySQL database work together to turn your answers into a career roadmap.</p>
+    </div>
+</section>
+
+<section class="flowchart-section">
+    <div class="container">
+        <div class="flow-legend" aria-label="Flowchart legend">
+            <span><i class="legend-dot frontend-dot"></i>Frontend</span>
+            <span><i class="legend-dot backend-dot"></i>Backend</span>
+            <span><i class="legend-dot database-dot"></i>Database</span>
+        </div>
+
+        <ol class="flowchart" aria-label="What Next career guidance flow">
+            <li class="flow-step frontend-step">
+                <span class="flow-number">01</span>
+                <div class="flow-node">
+                    <span class="flow-label">Frontend</span>
+                    <h2>Open the platform</h2>
+                    <p>The student starts at the home page and chooses to create an account or log in.</p>
+                    <code>GET /</code>
+                </div>
+            </li>
+            <li class="flow-step backend-step">
+                <span class="flow-number">02</span>
+                <div class="flow-node">
+                    <span class="flow-label">Backend</span>
+                    <h2>Authenticate the student</h2>
+                    <p>Flask validates the submitted details, hashes passwords, and creates a session.</p>
+                    <code>POST /register &middot; POST /login</code>
+                </div>
+            </li>
+            <li class="flow-step database-step">
+                <span class="flow-number">03</span>
+                <div class="flow-node">
+                    <span class="flow-label">Database</span>
+                    <h2>Store the account</h2>
+                    <p>MySQL stores the user profile. The schema is initialized from <code>database.sql</code> on the first request.</p>
+                    <code>users</code>
+                </div>
+            </li>
+            <li class="flow-step frontend-step">
+                <span class="flow-number">04</span>
+                <div class="flow-node">
+                    <span class="flow-label">Frontend</span>
+                    <h2>Answer the interest test</h2>
+                    <p>The signed-in student selects a 0-3 answer for every published question.</p>
+                    <code>GET/POST /interest-test</code>
+                </div>
+            </li>
+            <li class="flow-step backend-step">
+                <span class="flow-number">05</span>
+                <div class="flow-node">
+                    <span class="flow-label">Backend</span>
+                    <h2>Score the answers</h2>
+                    <p>Flask validates every answer, calculates category scores, and chooses the top category.</p>
+                    <code>score_and_record()</code>
+                </div>
+            </li>
+            <li class="flow-step database-step">
+                <span class="flow-number">06</span>
+                <div class="flow-node">
+                    <span class="flow-label">Database</span>
+                    <h2>Save the result</h2>
+                    <p>The score snapshot is saved so the student and admin can view the latest attempt later.</p>
+                    <code>quiz_results</code>
+                </div>
+            </li>
+            <li class="flow-step backend-step">
+                <span class="flow-number">07</span>
+                <div class="flow-node">
+                    <span class="flow-label">Backend</span>
+                    <h2>Build recommendations</h2>
+                    <p>The selected category loads its courses, colleges, jobs, and roadmap from the recommendation data.</p>
+                    <code>GET /result</code>
+                </div>
+            </li>
+            <li class="flow-step frontend-step final-step">
+                <span class="flow-number">08</span>
+                <div class="flow-node">
+                    <span class="flow-label">Frontend</span>
+                    <h2>Explore the next move</h2>
+                    <p>The result page presents a clear direction, and the student can continue to courses, colleges, jobs, or the roadmap.</p>
+                    <code>/courses &middot; /colleges &middot; /jobs &middot; /roadmap</code>
+                </div>
+            </li>
+        </ol>
+
+        <div class="flow-ops">
+            <div>
+                <span class="flow-label">Operations</span>
+                <h2>Admin and deployment path</h2>
+            </div>
+            <p>Admins sign in at <code>/admin/login</code> to manage questions through the protected API. Render runs the GitHub repository with Gunicorn, while the hosted MySQL provider keeps user, question, and result data persistent.</p>
+        </div>
+    </div>
+</section>
+{% endblock %}
