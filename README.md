@@ -26,25 +26,23 @@ The flowchart is available at `/flowchart`. The health check is available at `/h
 
 This repository uses MySQL. Render's web service does not provide a persistent MySQL database for this configuration, so create a managed MySQL database with a provider before deploying the web service. Do not use `database/local.sqlite3` for production data.
 
-1. Push this folder's contents to a GitHub repository. The repository root must contain `app.py`, `render.yaml`, `database.sql`, and `requirements.txt`.
-2. In the Render dashboard choose **New + > Blueprint**, connect GitHub, select the repository, and choose the branch to deploy.
-3. Render reads `render.yaml`, installs `requirements.txt`, starts Gunicorn, and checks `/health`.
-4. In the Render service environment, set the `MYSQL_*` values from the managed MySQL provider:
-   `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`, and `MYSQL_SSL_MODE=REQUIRED`.
-5. Keep `SECRET_KEY` and `ADMIN_PASSWORD` generated or replace them with long secret values. Set `MAIN_SITE_URL` to the Render service URL and `CORS_ALLOWED_ORIGINS` to the allowed frontend origin.
-6. For a new, empty managed MySQL database, leave the Render Blueprint's `DB_AUTO_INIT=True` setting enabled so the app creates the schema and seed data on its first request. For an existing database, verify its tables and set `DB_AUTO_INIT=False` before deploying.
-7. Visit `/health`. A successful response is JSON with `{"status":"ok","database":"connected"}`. The check verifies both the connection and every required application table. On failure, `/health` returns a sanitized actionable `message`; website pages show the same error in a service-unavailable page, while API requests receive JSON.
-8. Visit `/admin/setup` once, then sign in at `/admin/login` using `ADMIN_USERNAME` and `ADMIN_PASSWORD`. Remove or protect this setup endpoint after the first administrator is created.
+1. Push the repository to GitHub. Its root must contain `app.py`, `admin/`, `render.yaml`, `database.sql`, and `requirements.txt`.
+2. In Render, choose **New + > Blueprint**, connect `messalajagadeeshvenkatsaikumar-glitch/what-next-career-guidance-stream`, and select the branch to deploy. The root `render.yaml` defines two separate web services from this same repository: `what-next-career-guidance` and `what-next-career-guidance-admin`.
+3. For each service, provide the same managed MySQL values: `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, and `MYSQL_DATABASE`. Keep `MYSQL_SSL_MODE=REQUIRED` and leave `MYSQL_SSL_CA` unset unless you configure a CA certificate file.
+4. The main service initializes a new, empty database when `DB_AUTO_INIT=True`. For an existing database, verify its tables and set `DB_AUTO_INIT=False`. Wait until the main service's `/health` check succeeds before relying on the admin dashboard.
+5. Set `MAIN_SITE_URL` on the admin service to the main service's public Render URL. Set the admin service's `ADMIN_PASSWORD` to a strong secret in Render; its `ADMIN_USERNAME` defaults to `admin`. Sign in at the admin service's `/login`.
+6. Both services have `/health` checks. A successful response is JSON with `{"status":"ok","database":"connected"}`. The main site's health check also verifies all required application tables; database failures return HTTP 503 rather than reporting a successful deployment.
+7. Subsequent pushes to the connected GitHub branch trigger Render deployments for both services. Check each service's Render Events and Logs to confirm its build, health check, and deployment.
 
 ## Deployment flow
 
 ```text
 GitHub push
-    -> Render Blueprint
-    -> pip install -r requirements.txt
-    -> gunicorn --bind 0.0.0.0:$PORT app:app
-    -> /health checks the MySQL connection
-    -> first request initializes database.sql
+    -> Render Blueprint (two web services)
+    -> main service: gunicorn app:app
+    -> admin service: gunicorn --chdir admin/admin_site app:app
+    -> both services connect to the same managed MySQL database
+    -> main service initializes database.sql for a new database
     -> students register, take the quiz, and receive recommendations
 ```
 

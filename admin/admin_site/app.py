@@ -5,16 +5,17 @@ from functools import wraps
 
 import mysql.connector
 from dotenv import load_dotenv
-from flask import Flask, flash, g, redirect, render_template, request, session, url_for
+from flask import Flask, flash, g, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
-# Load environment variables before importing config values.
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-load_dotenv(os.path.join(PROJECT_ROOT, '.env'))
+# Load the admin service's environment before importing config values.
+ADMIN_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+REPOSITORY_ROOT = os.path.dirname(ADMIN_DIR)
+load_dotenv(os.path.join(ADMIN_DIR, '.env'))
 
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-from config import Config
+if REPOSITORY_ROOT not in sys.path:
+    sys.path.insert(0, REPOSITORY_ROOT)
+from admin.config import Config
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
@@ -105,9 +106,9 @@ def get_db():
         try:
             g.db = mysql.connector.connect(**mysql_config())
             app.logger.info('Connected to MySQL shared database: %s', app.config['MYSQL_DATABASE'])
-        except mysql.connector.Error as exc:
+        except mysql.connector.Error:
             app.logger.exception('Database connection failed for MySQL database %s', app.config['MYSQL_DATABASE'])
-            raise RuntimeError(f'Unable to connect to the MySQL database: {app.config["MYSQL_DATABASE"]}') from exc
+            raise
     return g.db
 
 
@@ -116,6 +117,30 @@ def close_db(exception=None):
     db = g.pop('db', None)
     if db is not None:
         db.close()
+
+
+@app.route('/health')
+def health():
+    cursor = None
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute('SELECT 1')
+        cursor.fetchone()
+    except mysql.connector.Error:
+        app.logger.warning('Admin service health check failed because MySQL is unavailable')
+        return jsonify({'status': 'error', 'database': 'disconnected'}), 503
+    finally:
+        if cursor is not None:
+            cursor.close()
+
+    return jsonify({'status': 'ok', 'database': 'connected'}), 200
+
+
+@app.errorhandler(mysql.connector.Error)
+def handle_database_error(error):
+    app.logger.exception('Admin request failed because MySQL is unavailable')
+    return 'Database temporarily unavailable.', 503
 
 
 def admin_required(view):
@@ -179,6 +204,7 @@ def admin_logout():
 @app.route('/dashboard')
 @admin_required
 def admin_dashboard():
+    cursor = None
     try:
         db = get_db()
         cursor = db.cursor(dictionary=True)
@@ -196,7 +222,8 @@ def admin_dashboard():
         flash('Unable to load dashboard data. Check the database connection.', 'danger')
         return redirect(url_for('admin_login'))
     finally:
-        cursor.close()
+        if cursor is not None:
+            cursor.close()
 
     return render_template('admin_dashboard.html', users=users, feedback=feedback, messages=messages, results_count=results_count)
 
