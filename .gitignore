@@ -1,0 +1,14 @@
+.env
+!.env.example
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.pytest-temp/
+*.db
+database/*.db
+*.sqlite3
+*.pem
+certificate.pem
+certs/
+.vscode/

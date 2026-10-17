@@ -1,18 +1,29 @@
-from importlib.util import module_from_spec, spec_from_file_location
+import os
 from pathlib import Path
-import sys
 
-APP_DIR = Path(__file__).resolve().parent / "what-next career guidance stream"
-_SPEC = spec_from_file_location("legacy_project_config", APP_DIR / "config.py")
-if _SPEC is None or _SPEC.loader is None:
-    raise ImportError(f"Could not load config module from {APP_DIR / 'config.py'}")
+BASE_DIR = Path(__file__).resolve().parent
 
-_module = module_from_spec(_SPEC)
-sys.modules[_SPEC.name] = _module
-_SPEC.loader.exec_module(_module)
 
-for _name in dir(_module):
-    if not _name.startswith("__"):
-        globals()[_name] = getattr(_module, _name)
+def get_required_env(name):
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f'Environment variable {name} is required. Copy .env.example to .env and set it.')
+    return value
 
-BASE_DIR = APP_DIR
+
+class Config:
+    SECRET_KEY = get_required_env('SECRET_KEY')
+    DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() in {'1', 'true', 'yes', 'on'}
+    PORT = int(os.environ.get('PORT', '5000'))
+    MAIN_SITE_URL = os.environ.get('MAIN_SITE_URL', 'http://localhost:5000')
+    CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', MAIN_SITE_URL)
+    MYSQL_HOST = get_required_env('MYSQL_HOST')
+    MYSQL_PORT = int(get_required_env('MYSQL_PORT'))
+    MYSQL_USER = get_required_env('MYSQL_USER')
+    MYSQL_PASSWORD = get_required_env('MYSQL_PASSWORD')
+    MYSQL_DATABASE = get_required_env('MYSQL_DATABASE')
+    MYSQL_SSL_MODE = get_required_env('MYSQL_SSL_MODE')
+    MYSQL_SSL_CA = os.environ.get('MYSQL_SSL_CA')
+    DB_AUTO_INIT = os.environ.get('DB_AUTO_INIT', 'False').lower() in {'1', 'true', 'yes', 'on'}
+    ADMIN_USERNAME = get_required_env('ADMIN_USERNAME')
+    ADMIN_PASSWORD = get_required_env('ADMIN_PASSWORD')
