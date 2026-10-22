@@ -1,0 +1,120 @@
+-- What Next? Career Guidance Platform - tables for the configured MySQL database
+
+CREATE TABLE IF NOT EXISTS users (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    full_name VARCHAR(150) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    age INT NULL,
+    education_level VARCHAR(100) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS admins (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(100) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(150),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS questions (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    question_text TEXT NOT NULL,
+    category VARCHAR(100) NOT NULL,
+    status ENUM('draft','published','archived') NOT NULL DEFAULT 'draft',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_question_text (question_text(255))
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS question_options (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    question_id INT UNSIGNED NOT NULL,
+    option_text VARCHAR(150) NOT NULL,
+    score TINYINT UNSIGNED NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_question_score (question_id, score),
+    CONSTRAINT fk_option_question FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS user_responses (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    question_id INT UNSIGNED NOT NULL,
+    option_id INT UNSIGNED NOT NULL,
+    score TINYINT UNSIGNED NOT NULL,
+    answered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_response_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_response_question FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
+    CONSTRAINT fk_response_option FOREIGN KEY (option_id) REFERENCES question_options(id) ON DELETE CASCADE,
+    INDEX idx_response_user (user_id),
+    INDEX idx_response_question (question_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS career_recommendations (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    category VARCHAR(100) NOT NULL UNIQUE,
+    blurb TEXT NOT NULL,
+    courses JSON NOT NULL,
+    colleges JSON NOT NULL,
+    jobs JSON NOT NULL,
+    roadmap JSON NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS quiz_results (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    top_category VARCHAR(100) NOT NULL,
+    scores JSON NOT NULL,
+    taken_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_quiz_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_quiz_user_taken (user_id, taken_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS feedback (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NULL,
+    name VARCHAR(150),
+    email VARCHAR(255),
+    message TEXT NOT NULL,
+    rating TINYINT UNSIGNED NULL,
+    status ENUM('new','reviewed','resolved') NOT NULL DEFAULT 'new',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_feedback_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS contact_messages (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    subject VARCHAR(255),
+    message TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version VARCHAR(100) NOT NULL PRIMARY KEY,
+    applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS contact_message_replies (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    contact_message_id BIGINT UNSIGNED NOT NULL,
+    admin_username VARCHAR(100) NOT NULL,
+    recipient_email VARCHAR(255) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    body TEXT NOT NULL,
+    status ENUM('pending','sent','failed') NOT NULL DEFAULT 'pending',
+    provider_message_id VARCHAR(255) NULL,
+    error_message VARCHAR(255) NULL,
+    idempotency_key CHAR(64) NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    sent_at DATETIME NULL,
+    CONSTRAINT fk_reply_message FOREIGN KEY (contact_message_id) REFERENCES contact_messages(id) ON DELETE RESTRICT,
+    INDEX idx_reply_message_created (contact_message_id, created_at),
+    INDEX idx_reply_status_created (status, created_at)
+) ENGINE=InnoDB;
+
+INSERT IGNORE INTO schema_migrations (version) VALUES ('2026_10_20_admin_otp_and_replies');
