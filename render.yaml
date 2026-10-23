@@ -26,6 +26,8 @@ services:
         sync: false
       - key: MYSQL_SSL_MODE
         value: REQUIRED
+      - key: MYSQL_SSL_CA
+        value: ""
       - key: DB_AUTO_INIT
         value: "False"
       - key: SESSION_COOKIE_SECURE
