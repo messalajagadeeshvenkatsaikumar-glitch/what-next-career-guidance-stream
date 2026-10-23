@@ -113,21 +113,32 @@ def init_db():
     try:
         with app.app_context():
             db = get_db()
-            schema_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "database.sql"))
-            with open(schema_path, "r", encoding="utf-8") as f:
-                for statement in f.read().split(";"):
-                    statement = statement.strip()
-                    if statement:
-                        db.execute(statement)
-            db.commit()
+            core_schema_exists = True
+            try:
+                verify_core_schema(db)
+            except DatabaseSchemaError:
+                core_schema_exists = False
+                schema_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "database.sql"))
+                with open(schema_path, "r", encoding="utf-8") as f:
+                    for statement in f.read().split(";"):
+                        statement = statement.strip()
+                        if statement:
+                            db.execute(statement)
+                db.commit()
             apply_migrations(db)
-            ensure_seed_data(db, CAREER_DATA)
+            verify_schema(db)
+            if not core_schema_exists:
+                ensure_seed_data(db, CAREER_DATA)
         app.config["DB_INITIALIZED"] = True
         app.config["DB_ERROR"] = None
         return True
     except Exception as error:
         app.config["DB_ERROR"] = safe_error_message(error)
-        app.logger.exception("Database initialization failed during startup or request handling.")
+        app.logger.error(
+            "Database initialization failed during startup or request handling (%s): %s",
+            type(error).__name__,
+            app.config["DB_ERROR"],
+        )
         app.config["DB_INITIALIZED"] = False
         return False
 

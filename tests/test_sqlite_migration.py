@@ -235,8 +235,23 @@ def test_init_db_creates_schema_when_auto_init_is_enabled(monkeypatch):
     class SchemaDatabase:
         def __init__(self):
             self.statements = []
+            self.schema_checked = False
 
         def execute(self, statement, _params=()):
+            if 'SELECT table_name FROM information_schema.tables' in statement:
+                class SchemaCursor:
+                    def __init__(self, rows):
+                        self.rows = rows
+
+                    def fetchall(self):
+                        return self.rows
+
+                if not self.schema_checked:
+                    self.schema_checked = True
+                    return SchemaCursor([])
+                return SchemaCursor([
+                    {'table_name': name} for name in db.REQUIRED_TABLES
+                ])
             assert not _params
             self.statements.append(statement)
             return FakeCursor()
@@ -266,6 +281,47 @@ def test_init_db_creates_schema_when_auto_init_is_enabled(monkeypatch):
     assert any('CREATE TABLE IF NOT EXISTS users' in sql for sql in database.statements)
     assert any('CREATE TABLE IF NOT EXISTS quiz_results' in sql for sql in database.statements)
     assert migrated_databases == [database]
+
+
+def test_init_db_skips_schema_ddl_when_schema_already_exists(monkeypatch):
+    import importlib
+
+    for name, value in {
+        'SECRET_KEY': 'test-secret',
+        'MYSQL_HOST': 'managed-db.example',
+        'MYSQL_PORT': '27920',
+        'MYSQL_USER': 'avnadmin',
+        'MYSQL_PASSWORD': 'test-password',
+        'MYSQL_DATABASE': 'defaultdb',
+        'MYSQL_SSL_MODE': 'REQUIRED',
+        'DB_AUTO_INIT': 'True',
+    }.items():
+        monkeypatch.setenv(name, value)
+
+    import app as app_module
+    importlib.reload(app_module)
+    monkeypatch.setitem(app_module.app.config, 'DB_AUTO_INIT', True)
+
+    class ExistingSchemaDatabase:
+        def __init__(self):
+            self.statements = []
+
+        def execute(self, statement, _params=()):
+            self.statements.append(statement)
+            return FakeCursor()
+
+        def close(self):
+            pass
+
+    database = ExistingSchemaDatabase()
+    monkeypatch.setattr(app_module, 'connect_db', lambda: database)
+    monkeypatch.setattr(app_module, 'apply_migrations', lambda _database: None)
+    seed_calls = []
+    monkeypatch.setattr(app_module, 'ensure_seed_data', lambda *_args: seed_calls.append(_args))
+
+    assert app_module.init_db() is True
+    assert not any('CREATE TABLE' in statement for statement in database.statements)
+    assert seed_calls == []
 
 
 def test_safe_error_message_redacts_passwords(monkeypatch):
@@ -300,14 +356,14 @@ def test_health_endpoint_reports_database_status(monkeypatch):
         'MYSQL_SSL_MODE': 'REQUIRED',
         'ADMIN_USERNAME': 'admin',
         'ADMIN_PASSWORD': 'secret',
+        'DB_AUTO_INIT': 'False',
     }.items():
         monkeypatch.setenv(name, value)
 
     import importlib
     import app as app_module
     importlib.reload(app_module)
-
-    monkeypatch.setenv('DB_AUTO_INIT', 'False')
+    monkeypatch.setitem(app_module.app.config, 'DB_AUTO_INIT', False)
     monkeypatch.setattr(app_module, 'connect_db', lambda: db.Database(FakeConnection()))
     client = app_module.app.test_client()
     response = client.get('/health')

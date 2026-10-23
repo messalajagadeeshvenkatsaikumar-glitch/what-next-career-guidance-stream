@@ -31,6 +31,15 @@ def _migration_is_recorded(db):
 
 def apply_migrations(db):
     """Apply only missing additive changes; existing application data is untouched."""
+    migration_recorded = (
+        _table_exists(db, "schema_migrations")
+        and _migration_is_recorded(db)
+        and _table_exists(db, "contact_message_replies")
+        and _column_exists(db, "feedback", "status")
+    )
+    if migration_recorded:
+        return False
+
     db.execute(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
         "version VARCHAR(100) NOT NULL PRIMARY KEY, "
