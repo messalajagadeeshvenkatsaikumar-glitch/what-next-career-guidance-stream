@@ -59,14 +59,14 @@ This repository uses MySQL. Render's web service does not provide a persistent M
 6. Both services have `/health` checks. A successful response is JSON with `{"status":"ok","database":"connected"}`. The main site's health check also verifies all required application tables; database failures return HTTP 503 rather than reporting a successful deployment.
 7. Subsequent pushes to the connected GitHub branch trigger Render deployments for both services. Check each service's Render Events and Logs to confirm its build, health check, and deployment.
 
-If Render reports a port-scan timeout, check the service logs for a Gunicorn startup error before changing the port. The main service binds directly to Render's `PORT`, and Gunicorn writes startup errors to the service logs.
+If Render reports a port-scan timeout, check the service logs for the `Starting Gunicorn on 0.0.0.0:<port>` message and any following Gunicorn startup error before changing the port. The main service reads Render's `PORT` and passes it directly to Gunicorn without relying on shell variable expansion.
 
 ## Deployment flow
 
 ```text
 GitHub push
     -> Render Blueprint (two web services)
-    -> main service: gunicorn --bind 0.0.0.0:$PORT app:app
+    -> main service: python run_server.py (binds Gunicorn to Render's PORT)
     -> admin service: gunicorn --chdir admin/admin_site app:app
     -> both services connect to the same managed MySQL database
     -> main service initializes database.sql for a new database

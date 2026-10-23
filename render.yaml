@@ -5,7 +5,7 @@ services:
     rootDir: .
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT --log-level info --error-logfile - --capture-output app:app
+    startCommand: python run_server.py
     healthCheckPath: /health
     envVars:
       - key: SECRET_KEY
