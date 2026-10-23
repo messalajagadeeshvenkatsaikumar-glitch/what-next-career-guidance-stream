@@ -64,7 +64,7 @@ This repository uses MySQL. Render's web service does not provide a persistent M
 ```text
 GitHub push
     -> Render Blueprint (two web services)
-    -> main service: gunicorn app:app
+    -> main service: gunicorn --bind 0.0.0.0:$PORT app:app
     -> admin service: gunicorn --chdir admin/admin_site app:app
     -> both services connect to the same managed MySQL database
     -> main service initializes database.sql for a new database
