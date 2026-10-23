@@ -60,6 +60,7 @@ This repository uses MySQL. Render's web service does not provide a persistent M
 7. Subsequent pushes to the connected GitHub branch trigger Render deployments for both services. Check each service's Render Events and Logs to confirm its build, health check, and deployment.
 
 If Render reports a port-scan timeout, check the service logs for the `Starting Gunicorn on 0.0.0.0:<port>` message and any following Gunicorn startup error before changing the port. The main service reads Render's `PORT` and passes it directly to Gunicorn without relying on shell variable expansion.
+Do not set a conflicting port in Render's service settings; the launcher uses Render's `PORT` value (and defaults to `5000` only when running outside Render).
 
 ## Deployment flow
 
